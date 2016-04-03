@@ -193,7 +193,7 @@ Okay, here's the punchline! We don't really care how well the investments do, we
 # t+1=t { y=y }
 # t+1<t { y=y-1 }
 emote = function(history) {
-  ph = 0
+  ph = 100
   y = 0
   for (h in history) {
     y = emote_(y,h-ph)
@@ -202,24 +202,23 @@ emote = function(history) {
   return(y)
 }
 emote_ = function(y,delta) {
-  if (delta>=0) {
+  if (delta>0) {
     return(y+1)
   }
-  return(y-1)
-  if (y>=0){
-    return(y-1)
+  if (delta==0) {
+    return(y)
   }
-  return(y-1-y*0.1)
+  return(y-1)
 }
 ```
 
 Some quick examples to be clear how our toy investor works. Note that at the end of the day all of these investments have the same value (5), if someone were to invest entirely on day 1 they would come out with the same total sum of money! But--they would be differently happy:
 
 ```{r}
-emote(c(1,2,3,4,5)) # continuously increasing, most happiness
-emote(c(1,2,1,4,5)) # one dip, less happy
-emote(c(1,0,-1,-2,5)) # many dips, very unhappy
-emote(c(1,6,-5,3,5)) # large variability
+emote(c(100,120,130,140,150)) # continuously increasing, most happiness
+emote(c(100,120,110,140,150)) # one dip, less happy
+emote(c(100,0,-100,-200,500)) # many dips, very unhappy
+emote(c(100,600,-500,300,500)) # large variability, this model doesn't care
 ```
 
 Okay so clearly we are sensitive to variability--but in particular we are sensitive to extended periods of time where things go downhill, anything that reduces that possibility and smooths out the ride will make us more happy. Does DCA do that for us? (One way to think about this is to think: what if our DCA happened during a downturn? Our initial investment might still be dropping, but the later investment should 'soften the blow' so to speak.) Let's check:
@@ -274,7 +273,6 @@ ggplot() +
   geom_boxplot(data=fdata,aes(NumDCAEvents,Emotion),size=1) +
   xlab("Number of DCA Events") +
   ylab("Emotions (A.U. Positive is better)") +
-  geom_hline(aes(yintercept=0),color='red',linetype='dashed',size=1) +
   theme_bw() +
   theme(legend.position="none") +
   ggtitle('Emotions are more Positive as # DCA Events Increases')
