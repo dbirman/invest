@@ -1,0 +1,290 @@
+---
+title: "Dollar Cost Averaging is Good For Your Emotions"
+author: "Dan Birman"
+date: "Monday, March 07, 2016"
+output: html_document
+---
+
+```{r message=F, warning=F, echo=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggthemes)
+require(gridExtra)
+```
+
+
+
+#### Motivation
+
+I've been following a number of blogs (mrmoneymustache, etc) and posts on /r/personalfinance, /r/financialindependence, etc, and learning enormous amounts about investing. One thing I constantly hear is that dollar cost averaging is an inefficient way to invest, and that you should always put your money in immediately. In contrast, many people end up doing dollar cost averaging, where they put in a bit of their money at a time. It's pretty well established that investing all at once is the optimal choice (on average), but it's less obvious why we intuitively feel that dollar cost averaging will be the less gut-wrenching option. I'm a fan of simulations so what I'm going to do here is simulate the success of DCA vs. 100% immediate investment, and then look at how "gut-wrenching" each approach is! Let's dive in!
+
+### Step 1: Convince ourselves that the market trends up, and the trend is exponential
+
+I have here, courtesy of yahoo, the last 66 years of the S&P 500's history. I'm going to go ahead load the data, which has daily prices for every business day and show you that they do indeed follow an exponential curve.
+
+```{r echo=F}
+# Data in format: Date %% RelDate %% Price
+# file is a .csv with a string header
+data = read.csv('C:\\Users\\Dan\\proj\\invest\\sp500_1950.csv') %>%
+  filter(!is.na(Price))
+
+ggplot(data=data,aes(RelDate,Price)) +
+  geom_smooth(method="glm",method.args=list(family=gaussian(link="log")),color="orange") +
+  geom_line() +
+  geom_rangeframe() +
+  theme_tufte() + 
+  scale_x_continuous(limits=c(0,max(data$RelDate))) +
+  scale_y_continuous(limits=c(0,max(data$Price))) +
+  ggtitle('S&P 500 Price 1950-2016') +
+  xlab('Date (days)') +
+  ylab('S&P500 Price ($)')
+```
+
+I didn't bother to fit the exponential curve very well, as you can tell the curve isn't steep enough. But that aside, it's obvious that at basically any point in time (except in the last few hundred days) it's always better to invest all your money at once, because eventually it will go up. 
+
+We can be a bit more precise though by breaking up our dataset into chunks of "X" years, offset by a month between each dataset, and then looking at how often investments go up over that period vs. going down. This is basically what "Risk" means in terms of investing.
+
+I'll generate two big datasets, one sampled every month and going out 5 years, and one sampled every month going out 30 years.
+
+```{r echo=F}
+m_jind = function(vec,vals,jit) {
+  # return the indexes of many vals
+  inds = rep(0,length(vals))
+  for (i in seq(1,length(vals)-1)) {
+    inds[i] = jind(vec,vals[i],jit)
+  }
+  return(inds)
+}
+jind = function(vec,val,jit) {
+  # return the index of val in vector vec with jitter +- jit
+  # we return median so it takes the closest element to the actual value if possible
+  # not that val-jit:val+jit is always an odd range of numbers, so the median
+  # corresponds to the central element
+  w = which(((vec>val-jit)*(vec<val+jit))==1) # possible indexes, we want the median
+  if (length(w)%%2==0) {
+    # even, take the smaller value
+    mid = length(w)/2
+    return(w[mid])
+  } else {
+    return(median(w))
+  }
+}
+sample = function(years,data) {
+  n = nrow(data)
+  # chunk size
+  chunk = 365*years
+  # bootstrap length
+  boot = 30 # how often to sample the prices
+  # jump
+  jump = 100 # number of days separating the start of each dataset jump/boot != integer
+  # jitter
+  jitter = 3 # we need a small jitter to avoid weekends
+  #
+  ndata = data.frame(Date=factor(),RelDate=numeric(0),Price=numeric(0),Boot=numeric(0)) # make an empty data frame, we will save our data here in long form
+  i = 0
+  while (i+chunk < n) {
+    pos = seq(i,i+chunk,boot) # get the positions we will sample from
+    true_pos = m_jind(data$RelDate,pos,jitter)
+    ldata = data[true_pos,]
+    ldata$Boot = i
+    ldata$zDate = ldata$RelDate-min(ldata$RelDate)
+    ldata$Price = ldata$Price/ldata$Price[1]*100 # change to percentage
+    i = i + jump
+    ndata = suppressMessages(full_join(ndata,ldata))
+  }
+  ndata$Boot = factor(ndata$Boot)
+  ndata = ndata %>%
+    filter(!is.na(Price))
+  return(ndata)
+}
+```
+
+Now sample from our dataset.
+
+```{r message=F, warning=F}
+data5 = sample(5,data)
+data30 = sample(30,data)
+```
+
+And plot! The Y axis here is normalized so that it starts at 100%, otherwise it wouldn't be possible to compare different time periods.
+
+```{r echo=F}
+g1 = ggplot(data5,aes(zDate,Price,color=Boot)) +
+  geom_line() +
+  theme_bw() +
+  theme(legend.position="None") +
+  scale_y_continuous(limits=c(0,750)) +
+  xlab('Time (days)')
+g2= ggplot(data30,aes(zDate,Price,color=Boot)) +
+  geom_line() +
+  theme_bw() +
+  theme(legend.position="None") +
+  scale_y_continuous(limits=c(0,750)) +
+  xlab('Time (days)')
+grid.arrange(g1, g2, ncol=2)
+```
+
+It looks like on average over 5 years the S&P 500 goes up, although ocassionally it seems to go down a bit and sometimes it seems to be very flat. Over 30 years there's no question, it always goes up! So at this point, I am convinced, the market goes up.  
+
+### Step 2: Compare the success of dollar cost averaging vs. immediate initial investment
+
+We're going to imagine we're an investor who wants to invest X dollars. We'll try two things: either we invest X all at once (1 event) or we will split X into 2, 3, 4, or 5 equal parts, and invest them every Y days. In this case, Y will be every 200 days (this is a bit arbitrary, it could be any number).
+
+```{r echo=F}
+# for each boot dataset we will check how our investment would have grown if we put all our money in right away, vs. splitting it into chunks over a few years
+# range to wait for next investment
+jump = 200*1 # one year
+dca_times = 5
+boot = 30
+fdata = matrix(0,length(unique(data5$Boot))*dca_times,3)
+fi = 1
+for (dca_time in seq(1,dca_times)) {
+  for (cboot in unique(data5$Boot)) {
+    cdata = data5 %>%
+      filter(Boot==cboot)
+    last = cdata$Price[nrow(cdata)]
+    # get the value of the DCA investments
+    dca_ = 0
+    for (i in seq(0,dca_time-1)) {
+      start = jind(cdata$zDate,jump*i,boot+1) # use a jitter off boot+1 (from above)
+      succ = last / cdata$Price[start]
+      dca_ = dca_ + 1/dca_time * succ * 100
+    }
+    fdata[fi,] = as.numeric(c(cboot,dca_,dca_time))
+    fi = fi + 1
+  }
+}
+# do some shit to turn this back into a data frame
+fdata = as.data.frame(fdata)
+colnames(fdata) = c("Boot","EndPrice","NumDCAEvents")
+fdata$NumDCAEvents = factor(fdata$NumDCAEvents)
+mfdata = fdata %>%
+  group_by(NumDCAEvents) %>%
+  summarise(mu=mean(EndPrice))
+```
+
+```{r echo=F}
+ggplot() +
+  geom_point(data=fdata,aes(NumDCAEvents,EndPrice,color=NumDCAEvents),size=3) +
+  geom_point(data=mfdata,aes(NumDCAEvents,mu),shape='-',size=40) +
+  xlab("Number of Investment Events") +
+  ylab("End Price of Investment (%)") +
+  geom_rangeframe() +
+  theme_bw() +
+  ggtitle('Return on Investment is Highest Without DCA')
+```
+
+For explanation, each point on the graph is one 5-year chunk of investing. For DCA I add in money at regular intervals, while for the 1-DCA event everything goes in at the beginning, when doing more DCA events I push them farther into the future, I don't chop up the same unit of time with more events (you could do it both ways, results should be similar but less extreme). Since the distributions are relatively normal I plot the mean as the black bars.
+
+Okay, as expected, when we split our money up and invest some of it later on we end up doing worse. Not a huge surprise! We knew that the market was mostly exponential, so putting your money in later is on average a bad idea. So I'll accept that fact. 
+
+### Step 3: What happens to those gut-wrenching emotions?
+
+Okay, here's the punchline! We don't really care how well the investments do, we know DCA hurts us. But what about our gut! I want to feel *happy* about my investments! So let's imagine that we're a very simple investor who checks his investments once a month. If our investments went up since last month, we are happy (+1)! If our investments went down, we're unhappy (-1). We're simply going to look now at how much total happiness we have depending on how much dollar cost averaging we do.
+
+```{r echo=F}
+# We will now re-model dollar cost averaging, but look at the running price over time. We will compute at each time point the following equation:
+# t+1>t { y=y+1 }
+# t+1=t { y=y }
+# t+1<t { y=y-1 }
+emote = function(history) {
+  ph = 0
+  y = 0
+  for (h in history) {
+    y = emote_(y,h-ph)
+    ph = h
+  }
+  return(y)
+}
+emote_ = function(y,delta) {
+  if (delta>=0) {
+    return(y+1)
+  }
+  return(y-1)
+  if (y>=0){
+    return(y-1)
+  }
+  return(y-1-y*0.1)
+}
+```
+
+Some quick examples to be clear how our toy investor works. Note that at the end of the day all of these investments have the same value (5), if someone were to invest entirely on day 1 they would come out with the same total sum of money! But--they would be differently happy:
+
+```{r}
+emote(c(1,2,3,4,5)) # continuously increasing, most happiness
+emote(c(1,2,1,4,5)) # one dip, less happy
+emote(c(1,0,-1,-2,5)) # many dips, very unhappy
+emote(c(1,6,-5,3,5)) # large variability
+```
+
+Okay so clearly we are sensitive to variability--but in particular we are sensitive to extended periods of time where things go downhill, anything that reduces that possibility and smooths out the ride will make us more happy. Does DCA do that for us? (One way to think about this is to think: what if our DCA happened during a downturn? Our initial investment might still be dropping, but the later investment should 'soften the blow' so to speak.) Let's check:
+
+```{r echo=F}
+# for each boot dataset we will check how our investment would have grown if we put all our money in right away, vs. splitting it into chunks over a few years. This time we will also create a running model of our investment over time in either case 
+# range to wait for next investment
+dca_times = 5
+fdata = matrix(0,length(unique(data5$Boot))*dca_times,4)
+fi = 1
+for (dca_time in seq(1,dca_times)) {
+  # for each DCA sequence
+  for (cboot in unique(data5$Boot)) {
+    
+    cdata = data5 %>%
+      filter(Boot==cboot)
+    last = cdata$Price[nrow(cdata)]
+    # get the value of the DCA investments
+    dca_ = 0
+    
+    prices = matrix(0,nrow(cdata),1)
+    for (i in seq(0,dca_time-1)) {
+      start = jind(cdata$zDate,jump*i,boot+1) # use a jitter off boot+1 (from above)
+      succ = last / cdata$Price[start]
+      dca_ = dca_ + 1/dca_time * succ * 100
+      for (pi in seq(2,length(cdata$Price))) {
+        # now generate the prices for this investment
+        prev = cdata$Price[start]
+        if (pi>=start) { # do nothing until start is pi
+          factor = cdata$Price[pi]/cdata$Price[pi-1]
+          prev = factor * prev
+          prices[pi,] = prices[pi,] + prev
+        }
+      }
+    }
+    fdata[fi,] = as.numeric(c(cboot,dca_,dca_time,emote(prices)))
+    fi = fi + 1
+  }
+}
+# do some shit to turn this back into a data frame
+fdata = as.data.frame(fdata)
+colnames(fdata) = c("Boot","EndPrice","NumDCAEvents","Emotion")
+fdata$NumDCAEvents = factor(fdata$NumDCAEvents)
+fdata$Boot = factor(fdata$Boot)
+mfdata = fdata %>%
+  group_by(NumDCAEvents) %>%
+  summarise(mu=mean(EndPrice),muE=mean(Emotion),pp=sum(EndPrice))
+```
+
+```{r echo=F}
+ggplot() +
+  geom_point(data=fdata,aes(NumDCAEvents,Emotion,color=Boot),size=3,position=position_jitter(width=.3,height=.3)) +
+  geom_point(data=mfdata,aes(NumDCAEvents,muE),shape='-',size=30) +
+  xlab("Number of DCA Events") +
+  ylab("Emotions (Positive is better)") +
+  geom_rangeframe() +
+  theme_bw() +
+  theme(legend.position="none") +
+  ggtitle('Emotions are more Positive as # DCA Events Increases')
+```
+
+Plot is the same as before, but now each point is the total "happiness" of our investor in each 5-year scenario, for a given number of DCA events. 1 DCA event means we put all our money in at once.
+
+Surprise surprise! Or not! DCA does in fact save you from those gut-wrenching emotions! The more dollar cost averaging you do (remember these investments are far apart) the less terrified you will be! In short, DCA reduces volatility, at the cost of returns. This is no different than investing in bonds in lieu of stocks, DCA actually makes it less likely you will experience negative returns overall.
+
+#### Conclusions
+
+So there's the simple truth--by simulating a simple model of an investor we can see that dollar cost averaging is the logical thing to do if you're more worried about your emotions--but the wrong thing to do when you're more worried about your investments. If you're the kind of investor who constantly checks their phone to see how their investments are doing each day, you will definitely benefit from the peace of mind of knowing that with DCA you will end up less stressed out. If you're the kind of person who invests and forgets--put it all in today! Thanks for reading, I hope you found this interesting!
+
+Some caveats: Obviously we defined emotions in a really simplistic way here. Humans tend to be loss averse, so probably it should be worse to have repeated losses than repeated gains. In practice that change just increases the slope of the emotion function, but since we're just look at the qualitative comparison here that doesn't really matter. Other obvious caveats are that different ways of doing DCA will have an impact, but again, on average putting in money later hurts you.
+
+(Apologies for the poor quality graphs, they come straight from R and don't look all that great...)
