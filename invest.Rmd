@@ -30,7 +30,7 @@ data = read.csv('C:\\Users\\Dan\\proj\\invest\\sp500_1950.csv') %>%
   filter(!is.na(Price))
 
 ggplot(data=data,aes(RelDate,Price)) +
-  geom_smooth(method="glm",method.args=list(family=gaussian(link="log")),color="orange") +
+  geom_smooth(method="glm",method.args=list(family=gaussian(link="log")),color="red") +
   geom_line() +
   geom_rangeframe() +
   theme_tufte() + 
@@ -110,18 +110,22 @@ data30 = sample(30,data)
 And plot! The Y axis here is normalized so that it starts at 100%, otherwise it wouldn't be possible to compare different time periods.
 
 ```{r echo=F}
-g1 = ggplot(data5,aes(zDate,Price,color=Boot)) +
-  geom_line() +
+g1 = ggplot(data5,aes(zDate,Price,group=Boot)) +
+  geom_line(size=0.5,alpha=0.1) +
+  geom_hline(aes(yintercept=100),color='red',linetype='dashed',size=1) +
   theme_bw() +
   theme(legend.position="None") +
   scale_y_continuous(limits=c(0,750)) +
-  xlab('Time (days)')
-g2= ggplot(data30,aes(zDate,Price,color=Boot)) +
-  geom_line() +
+  xlab('Time (days)') +
+  ylab('Relative Price (%)')
+g2= ggplot(data30,aes(zDate,Price)) +
+  geom_line(aes(zDate,Price,group=Boot),size=0.5,alpha=0.1) +
+  geom_hline(aes(yintercept=100),color='red',linetype='dashed',size=1) +
   theme_bw() +
   theme(legend.position="None") +
   scale_y_continuous(limits=c(0,750)) +
-  xlab('Time (days)')
+  xlab('Time (days)') +
+  ylab('Relative Price (%)')
 grid.arrange(g1, g2, ncol=2)
 ```
 
@@ -166,10 +170,10 @@ mfdata = fdata %>%
 
 ```{r echo=F}
 ggplot() +
-  geom_point(data=fdata,aes(NumDCAEvents,EndPrice,color=NumDCAEvents),size=3) +
-  geom_point(data=mfdata,aes(NumDCAEvents,mu),shape='-',size=40) +
+  geom_boxplot(data=fdata,aes(NumDCAEvents,EndPrice),size=1) +
   xlab("Number of Investment Events") +
   ylab("End Price of Investment (%)") +
+  geom_hline(aes(yintercept=100),color='red',linetype='dashed',size=1) +
   geom_rangeframe() +
   theme_bw() +
   ggtitle('Return on Investment is Highest Without DCA')
@@ -267,11 +271,10 @@ mfdata = fdata %>%
 
 ```{r echo=F}
 ggplot() +
-  geom_point(data=fdata,aes(NumDCAEvents,Emotion,color=Boot),size=3,position=position_jitter(width=.3,height=.3)) +
-  geom_point(data=mfdata,aes(NumDCAEvents,muE),shape='-',size=30) +
+  geom_boxplot(data=fdata,aes(NumDCAEvents,Emotion),size=1) +
   xlab("Number of DCA Events") +
-  ylab("Emotions (Positive is better)") +
-  geom_rangeframe() +
+  ylab("Emotions (A.U. Positive is better)") +
+  geom_hline(aes(yintercept=0),color='red',linetype='dashed',size=1) +
   theme_bw() +
   theme(legend.position="none") +
   ggtitle('Emotions are more Positive as # DCA Events Increases')
@@ -286,5 +289,3 @@ Surprise surprise! Or not! DCA does in fact save you from those gut-wrenching em
 So there's the simple truth--by simulating a simple model of an investor we can see that dollar cost averaging is the logical thing to do if you're more worried about your emotions--but the wrong thing to do when you're more worried about your investments. If you're the kind of investor who constantly checks their phone to see how their investments are doing each day, you will definitely benefit from the peace of mind of knowing that with DCA you will end up less stressed out. If you're the kind of person who invests and forgets--put it all in today! Thanks for reading, I hope you found this interesting!
 
 Some caveats: Obviously we defined emotions in a really simplistic way here. Humans tend to be loss averse, so probably it should be worse to have repeated losses than repeated gains. In practice that change just increases the slope of the emotion function, but since we're just look at the qualitative comparison here that doesn't really matter. Other obvious caveats are that different ways of doing DCA will have an impact, but again, on average putting in money later hurts you.
-
-(Apologies for the poor quality graphs, they come straight from R and don't look all that great...)
