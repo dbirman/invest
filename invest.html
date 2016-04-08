@@ -94,7 +94,7 @@ data30 = sample(30,data)</code></pre>
 <div id="step-3-what-happens-to-those-gut-wrenching-emotions" class="section level3">
 <h3>Step 3: What happens to those gut-wrenching emotions?</h3>
 <p>Okay, here’s the punchline! We don’t really care how well the investments do, we know DCA hurts us. But what about our gut! I want to feel <em>happy</em> about my investments! So let’s imagine that we’re a very simple investor who checks his investments once a month. If our investments went up since last month, we are happy (+1)! If our investments went down, we’re unhappy (-1). We’re simply going to look now at how much total happiness we have depending on how much dollar cost averaging we do.</p>
-<p>Some quick examples to be clear how our toy investor works. Note that at the end of the day all of these investments have the same value (5), if someone were to invest entirely on day 1 they would come out with the same total sum of money! But–they would be differently happy:</p>
+<p>Some quick examples to be clear how our toy investor works. Note that at the end of the day all of these investments have the same value (150 or 50% increase over original), if someone were to invest entirely on day 1 they would come out with the same total sum of money! But–they would be differently happy:</p>
 <pre class="r"><code>emote(c(100,120,130,140,150)) # continuously increasing, most happiness</code></pre>
 <pre><code>## [1] 4</code></pre>
 <pre class="r"><code>emote(c(100,120,110,140,150)) # one dip, less happy</code></pre>
